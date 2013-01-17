@@ -44,7 +44,7 @@ var makeTileSet = function () {
 			var xtile = tile % tiles_per_row;
 			tiles.push({ 
 				draw: drawTile, 
-				x: xtile * (w + 2),
+				x: xtile * w,
 				y: (tile - xtile) * h,
 				w: w,
 				h: h,
@@ -96,15 +96,15 @@ var drawSelector = function(ctx, x, y) {
 var mainMap = 
 	[[0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0], 
 	[1, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 2], 
-	[2, 3, 2, 3, 2, 3, 3, 3, 2, 2, 3, 2], 
-	[3, 0, 3, 0, 3, 0, 3, 3, 0, 0, 3, 3],
+	[2, -0, 2, -0, 2, -0, -0, -0, 2, 2, -0, 2], 
+	[-0, 0, -0, 0, -0, 0, -0, -0, 0, 0, -0, -0],
 	[1, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 2], 
-	[2, 3, 2, 3, 2, 3, 3, 3, 2, 2, 3, 2], 
-	[3, 0, 3, 0, 3, 0, 3, 3, 0, 0, 3, 3],
+	[2, -0, 2, -0, 2, -0, -0, -0, 2, 2, -0, 2], 
+	[-0, 0, -0, 0, -0, 0, -0, -0, 0, 0, -0, -0],
 	[1, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 2], 
-	[2, 3, 2, 3, 2, 3, 3, 3, 2, 2, 3, 2], 
-	[3, 0, 3, 0, 3, 0, 3, 3, 0, 0, 3, 3],
-	[1, 2, 1, 3, 2, 0, 1, 2, 3, 2, 1, 0]];
+	[2, -0, 2, -0, 2, -0, -0, -0, 2, 2, -0, 2], 
+	[-0, 0, -0, 0, -0, 0, -0, -0, 0, 0, -0, -0],
+	[1, 2, 1, -0, 2, 0, 1, 2, -0, 2, 1, 0]];
 
 var Input = function() {
 	var buttons = {left:0, right:1, up:2, down:3, a:4, b:5, x:6, y:7};
@@ -140,14 +140,14 @@ var Input = function() {
 
 var Inputs = Input.buttons;
 
-loadImages(["tiles.png"], function (images) {
+loadImages(["tilemap.png"], function (images) {
 	var canvas = document.getElementById('tbtgame');
 	var ctx = canvas.getContext('2d');
 
 	ctx.mozImageSmoothingEnabled = false;
 	ctx.scale(3, 3);
 
-	var mainTileSet = makeTileSet(images[0], 2, 4, 32, 32);
+	var mainTileSet = makeTileSet(images[0], 3, 3, 32, 32);
 
 	var selectorX = 0;
 	var selectorY = 0;
