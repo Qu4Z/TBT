@@ -5,6 +5,11 @@ var Util = function() {
 	};
 }();
 
+var Colors = {
+	BackgroundBlue: "#0000AA",
+	TextGrey: "#CCCCCC"
+};
+
 var loadImages = function(images, cb) {
 	var count = 0;
 	var result = [];
@@ -62,43 +67,19 @@ var makeTileSet = function () {
 	};
 }();
 
-var drawMap = function(ctx, x, y, map, tileset, cameraX, cameraY) {
-	for (var xT = 0; xT < 5; xT++) {
-		for (var yT = 0; yT < 5; yT++) {
-			tileset[map[yT + cameraY][xT + cameraX]].draw(ctx, x + xT * 32, y + yT * 32);
-		}
-	}
-};
+var makeSprite = function() {
+	var drawSprite = function(ctx, x, y, sprite) {
+		sprite = sprite || this;
+		ctx.drawImage(sprite.image, x, y);
+	};
 
-selectorArmLength = 5;
-
-var drawSelector = function(ctx, x, y) {
-	var size = selectorArmLength;
-	var w = 32;
-	var h = 32;
-	var offset = 1;
-	ctx.strokeStyle = "rgb(255,255,255)";
-	ctx.beginPath();
-	ctx.moveTo(x + offset, y + offset + size);
-	ctx.lineTo(x + offset, y + offset);
-	ctx.lineTo(x + offset + size, y + offset);
-	ctx.stroke();
-	ctx.beginPath();
-	ctx.moveTo(x + w - offset, y + offset + size);
-	ctx.lineTo(x + w - offset, y + offset);
-	ctx.lineTo(x + w - offset - size, y + offset);
-	ctx.stroke();
-	ctx.beginPath();
-	ctx.moveTo(x + offset, y + h - offset - size);
-	ctx.lineTo(x + offset, y + h - offset);
-	ctx.lineTo(x + offset + size, y + h - offset);
-	ctx.stroke();
-	ctx.beginPath();
-	ctx.moveTo(x + w - offset, y + h - offset - size);
-	ctx.lineTo(x + w - offset, y + h - offset);
-	ctx.lineTo(x + w - offset - size, y + h - offset);
-	ctx.stroke();
-};
+	return function(image) {
+		return {
+			draw: drawSprite,
+			image: image
+		};
+	};
+}();
 
 var mainMap = 
 	[[0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0], 
@@ -187,17 +168,113 @@ var Widgets = function () {
 	};
 }();
 
+var Units;
 var Map;
+var Menu;
 
-loadImages(["tilemap.png"], function (images) {
+loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
+  Units = function() {
+		var units = [];
+
+		units.push({ x: 1, y: 0, sprite: makeSprite(images[1]),
+			name: "Soldier",
+			hp: 10,
+			maxHp: 10
+		});
+
+		units.push({ x: 3, y: 4, sprite: makeSprite(images[2]),
+			name: "Player",
+			hp: 7,
+			maxHp: 12
+		});
+
+		var unitAt = function(x, y) {
+			for (var i = 0; i < units.length; i++) {
+				var unit = units[i];
+				if (unit.x == x && unit.y == y) {
+					return unit;
+				}
+			}
+			return null;
+		};
+
+		var draw = function(ctx, cameraX, cameraY) {
+			for (var i = 0; i < units.length; i++) {
+				if (Map.onScreen(units[i].x, units[i].y)) {
+					units[i].sprite.draw(ctx, (units[i].x - cameraX) * 32, (units[i].y - cameraY) * 32);
+				}
+			}
+		};
+
+		return {
+			unitAt: unitAt,
+			draw: draw
+		};
+	}();
+
 	Map = function() {
 		var mainTileSet = makeTileSet(images[0], 3, 3, 32, 32);
 
 		var selectorX = 0;
 		var selectorY = 0;
+		var selectorArmLength = 5;
+
 		var cameraX = 0;
 		var cameraY = 0;
 		var sizeDir = +0.3;
+
+		var onScreen = function(x, y) {
+			return (x >= cameraX) && (y >= cameraY) && (x < cameraX + 5) && (y < cameraY + 5);
+		};
+
+		var drawMap = function(ctx, x, y, map, tileset, cameraX, cameraY) {
+			for (var xT = 0; xT < 5; xT++) {
+				for (var yT = 0; yT < 5; yT++) {
+					tileset[map[yT + cameraY][xT + cameraX]].draw(ctx, x + xT * 32, y + yT * 32);
+				}
+			}
+		};
+
+		var drawSelector = function(ctx, x, y) {
+			var size = selectorArmLength;
+			var w = 32;
+			var h = 32;
+			var offset = 1;
+			ctx.strokeStyle = "rgb(255,255,255)";
+			ctx.beginPath();
+			ctx.moveTo(x + offset, y + offset + size);
+			ctx.lineTo(x + offset, y + offset);
+			ctx.lineTo(x + offset + size, y + offset);
+			ctx.stroke();
+			ctx.beginPath();
+			ctx.moveTo(x + w - offset, y + offset + size);
+			ctx.lineTo(x + w - offset, y + offset);
+			ctx.lineTo(x + w - offset - size, y + offset);
+			ctx.stroke();
+			ctx.beginPath();
+			ctx.moveTo(x + offset, y + h - offset - size);
+			ctx.lineTo(x + offset, y + h - offset);
+			ctx.lineTo(x + offset + size, y + h - offset);
+			ctx.stroke();
+			ctx.beginPath();
+			ctx.moveTo(x + w - offset, y + h - offset - size);
+			ctx.lineTo(x + w - offset, y + h - offset);
+			ctx.lineTo(x + w - offset - size, y + h - offset);
+			ctx.stroke();
+		};
+
+		var drawUnitInfo = function(ctx) {
+			var unit = Units.unitAt(selectorX, selectorY);
+			if (unit) {
+				var drawY = (selectorY - cameraY > 2) ? 0 : 90;
+				ctx.fillStyle = Colors.BackgroundBlue;
+				ctx.strokeStyle = Colors.TextGrey;
+				ctx.fillRect(10, 10 + drawY, 50, 50);
+				ctx.rect(10, 10 + drawY, 50, 50);
+				ctx.fillStyle = Colors.TextGrey;
+				ctx.fillText(unit.name, 10, 20 + drawY);
+			}
+		};
 
 		var moveSelector = function(x, y) {
 			selectorX = clamp(x, 0, 10);
@@ -243,24 +320,25 @@ loadImages(["tilemap.png"], function (images) {
 
 		var draw = function(ctx) {
 			drawMap(ctx, 0, 0, mainMap, mainTileSet, cameraX, cameraY);
+			Units.draw(ctx, cameraX, cameraY);
 			drawSelector(ctx, (selectorX - cameraX) * 32, (selectorY - cameraY) * 32);
+			drawUnitInfo(ctx);
 		}
 
 		return {
 			step: step,
 			draw: draw,
 			handleInput: handleInput,
+			onScreen: onScreen
 		};
 	}();
 
-
-
-	var Menu = function () {
+	Menu = function () {
 		var step = Util.nullFunc;
 		var draw = function (ctx) {
-			ctx.fillStyle = "#0000AA";
+			ctx.fillStyle = Colors.BackgroundBlue;;
 			ctx.fillRect(10, 10, 120, 120);
-			ctx.fillStyle = "#CCCCCC";
+			ctx.fillStyle = Colors.TextGrey;
 			ctx.fillText("MENU", 30, 30);
 		};
 
@@ -270,10 +348,15 @@ loadImages(["tilemap.png"], function (images) {
 			}
 		};
 
+		var show = function() {
+			Widgets.push(Menu);
+		};
+
 		return {
 			step: step,
 			handleInput: handleInput,
-			draw: draw
+			draw: draw,
+			show: show
 		};
 	}();
 	
