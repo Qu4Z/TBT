@@ -1,3 +1,10 @@
+var Util = function() {
+	var nullFunc = function () {};
+	return {
+		nullFunc: nullFunc
+	};
+}();
+
 var loadImages = function(images, cb) {
 	var count = 0;
 	var result = [];
@@ -107,12 +114,12 @@ var mainMap =
 	[1, 2, 1, -0, 2, 0, 1, 2, -0, 2, 1, 0]];
 
 var Input = function() {
-	var buttons = {left:0, right:1, up:2, down:3, a:4, b:5, x:6, y:7};
+	var buttons = {Left:0, Right:1, Up:2, Down:3, A:4, B:5, X:6, Y:7};
 	var inputState = [false, false, false, false, false, false, false, false];
 	var newInputs = [];
 
+	var keyboardMaps = [37, 39, 38, 40, 88, 90, 83, 65];
 	var listener = function(e) {
-	  var keyboardMaps = [37, 39, 38, 40, 0, 0, 0, 0];
 		e = e || window.event;
 		var moveStep = 1;
 		var idx = keyboardMaps.indexOf(e.keyCode);
@@ -129,6 +136,9 @@ var Input = function() {
 		newInputs.length = 0;
 	};
 
+	document.onkeydown = listener;
+	document.onkeyup = listener;
+
 	return {
 		tick: tick,
 		listener: listener,
@@ -140,80 +150,158 @@ var Input = function() {
 
 var Inputs = Input.buttons;
 
+var Widgets = function () {
+	var widgetStack = [];
+	var push = function(widget) {
+		widgetStack.push(widget);
+	};
+
+	var pop = function(widget) {
+		widgetStack.pop();
+	};
+
+	var step = function() {
+		for (var i = 0; i < widgetStack.length; i++) {
+			widgetStack[i].step();
+		}
+	};
+
+	var draw = function(ctx) {
+		for (var i = 0; i < widgetStack.length; i++) {
+			widgetStack[i].draw(ctx);
+		}
+	}
+
+	var handleInput = function(inputs) {
+		if ((widgetStack.length > 0) && (inputs.length > 0)) {
+			widgetStack[widgetStack.length - 1].handleInput(inputs);
+		}
+	}
+
+	return {
+		step: step,
+		handleInput: handleInput,
+		draw: draw,
+		push: push,
+		pop: pop
+	};
+}();
+
+var Map;
+
 loadImages(["tilemap.png"], function (images) {
+	Map = function() {
+		var mainTileSet = makeTileSet(images[0], 3, 3, 32, 32);
+
+		var selectorX = 0;
+		var selectorY = 0;
+		var cameraX = 0;
+		var cameraY = 0;
+		var sizeDir = +0.3;
+
+		var moveSelector = function(x, y) {
+			selectorX = clamp(x, 0, 10);
+			if (selectorX < cameraX)
+				cameraX = selectorX;
+			if (selectorX > cameraX + 4)
+				cameraX = selectorX - 4;
+			selectorY = clamp(y, 0, 10);
+			if (selectorY < cameraY)
+				cameraY = selectorY;
+			if (selectorY > cameraY + 4)
+				cameraY = selectorY - 4;
+		};
+
+		var step = function() {
+			selectorArmLength += sizeDir;
+			if (selectorArmLength > 6) sizeDir = -0.3;
+			if (selectorArmLength < 4) sizeDir = 0.3;
+		};
+
+		var handleInput = function(inputs) {
+			for (var idx = 0; idx < inputs.length; idx++) {
+				var inp = inputs[idx];
+				switch (inp) {
+				case Inputs.Left:
+					moveSelector(selectorX - 1, selectorY);
+					break;
+				case Inputs.Right:
+					moveSelector(selectorX + 1, selectorY);
+					break;
+				case Inputs.Up:
+					moveSelector(selectorX, selectorY - 1);
+					break;
+				case Inputs.Down:
+					moveSelector(selectorX, selectorY + 1);
+					break;
+				case Inputs.X:
+					Widgets.push(Menu);
+					break;
+				}
+			}
+		};
+
+		var draw = function(ctx) {
+			drawMap(ctx, 0, 0, mainMap, mainTileSet, cameraX, cameraY);
+			drawSelector(ctx, (selectorX - cameraX) * 32, (selectorY - cameraY) * 32);
+		}
+
+		return {
+			step: step,
+			draw: draw,
+			handleInput: handleInput,
+		};
+	}();
+
+
+
+	var Menu = function () {
+		var step = Util.nullFunc;
+		var draw = function (ctx) {
+			ctx.fillStyle = "#0000AA";
+			ctx.fillRect(10, 10, 120, 120);
+			ctx.fillStyle = "#CCCCCC";
+			ctx.fillText("MENU", 30, 30);
+		};
+
+		var handleInput = function(inputs) {
+			if (inputs.indexOf(Inputs.B) >= 0) {
+				Widgets.pop();
+			}
+		};
+
+		return {
+			step: step,
+			handleInput: handleInput,
+			draw: draw
+		};
+	}();
+	
+
+	// === DO INIT
+
 	var canvas = document.getElementById('tbtgame');
 	var ctx = canvas.getContext('2d');
 
 	ctx.mozImageSmoothingEnabled = false;
 	ctx.scale(3, 3);
 
-	var mainTileSet = makeTileSet(images[0], 3, 3, 32, 32);
-
-	var selectorX = 0;
-	var selectorY = 0;
-	var cameraX = 0;
-	var cameraY = 0;
-	var sizeDir = +0.3;
-
-  var moveSelector = function(x, y) {
-	  selectorX = clamp(x, 0, 10);
-		if (selectorX < cameraX)
-			cameraX = selectorX;
-		if (selectorX > cameraX + 4)
-			cameraX = selectorX - 4;
-		selectorY = clamp(y, 0, 10);
-		if (selectorY < cameraY)
-			cameraY = selectorY;
-		if (selectorY > cameraY + 4)
-			cameraY = selectorY - 4;
-	}
+	Widgets.push(Map);
 
 	var mainloop = function() {
 		setTimeout(mainloop, 30);
+		document.getElementById("mspf").innerHTML = '' + FrameCounter();
 		
 		// START LOGIC
-
-	  selectorArmLength += sizeDir;
-		if (selectorArmLength > 6) sizeDir = -0.3;
-		if (selectorArmLength < 4) sizeDir = 0.3;
-		document.getElementById("mspf").innerHTML = '' + FrameCounter();
-
-		for (var idx = 0; idx < Input.newInputs.length; idx++) {
-			var inp = Input.newInputs[idx];
-			switch (inp) {
-			case Inputs.left:
-				moveSelector(selectorX - 1, selectorY);
-				break;
-			case Inputs.right:
-				moveSelector(selectorX + 1, selectorY);
-				break;
-			case Inputs.up:
-				moveSelector(selectorX, selectorY - 1);
-				break;
-			case Inputs.down:
-				moveSelector(selectorX, selectorY + 1);
-				break;
-			}
-		}
-
-		document.getElementById("sX").innerHTML = '' + selectorX;
-		document.getElementById("sY").innerHTML = '' + selectorY;
-		document.getElementById("cX").innerHTML = '' + cameraX;
-		document.getElementById("cY").innerHTML = '' + cameraY;
+		Widgets.handleInput(Input.newInputs);
+		Widgets.step();
 
 		// END LOGIC
 		
+		Widgets.draw(ctx);
 		Input.tick();
-		draw();
 	};
 	
-	var draw = function() {
-		drawMap(ctx, 0, 0, mainMap, mainTileSet, cameraX, cameraY);
-		drawSelector(ctx, (selectorX - cameraX) * 32, (selectorY - cameraY) * 32);
-	};
-
-	document.onkeydown = Input.listener;
-	document.onkeyup = Input.listener;
 	mainloop();
 });
 

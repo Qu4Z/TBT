@@ -1,4 +1,4 @@
  - Make "view" more consistent. 
    - (May need to modify draw commands to take a rectangle, eg drawTile(a, b)(ctx, x, y, w, h) although that's probably premature optimisation)
- - Add menu/text stack. Trigger menu by pressing A on empty terrain for now.
  - Add units
+ - Key Handler may be dropping keypresses (event listener vs tick())
