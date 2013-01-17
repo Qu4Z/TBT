@@ -13,12 +13,12 @@ var loadImages = function(images, cb) {
 	}
 };
 
-var frameCounter = function () {
+var FrameCounter = function () {
 	var spf = "?";
 	var frames = 0;
 	var last_time = new Date().getTime();
 	return function() {
-		if (frames++ == 30) {
+		if (++frames == 30) {
 			var time = new Date().getTime();
 			spf = String(Math.floor((time - last_time) / frames));
 			last_time = time;
@@ -32,24 +32,35 @@ var clamp = function(val, min, max) {
 	return (val < min) ? min : (val > max) ? max : val;
 };
 
-var makeTileSet = function(img, img_per_row, w, h) {
-	return function(subimg) {
-		var ximg = subimg % img_per_row;
-		var yimg = subimg - ximg;
-		return function(ctx, x, y) {
-			ctx.drawImage(img, ximg * (w + 2), yimg * h, w, h, x, y, w, h);
-		};
+var makeTileSet = function () { 
+	var drawTile = function(ctx, x, y, tile) {
+		tile = tile || this;
+		ctx.drawImage(tile.img, tile.x, tile.y, tile.w, tile.h, x, y, tile.w, tile.h);
 	};
-};
 
-var drawMap = function(map, tileset, cameraX, cameraY) {
-	return function(ctx, x, y) {
-		for (var xT = 0; xT < 5; xT++) {
-			for (var yT = 0; yT < 5; yT++) {
-				tileset(map[yT + cameraY][xT + cameraX])(ctx, x + xT * 32, y + yT * 32);
-			}
+	return function(img, tiles_per_row, tile_count, w, h) {
+		var tiles = [];
+		for (var tile = 0; tile < tile_count; tile++) {
+			var xtile = tile % tiles_per_row;
+			tiles.push({ 
+				draw: drawTile, 
+				x: xtile * (w + 2),
+				y: (tile - xtile) * h,
+				w: w,
+				h: h,
+				img: img
+			});
 		}
+		return tiles;
 	};
+}();
+
+var drawMap = function(ctx, x, y, map, tileset, cameraX, cameraY) {
+	for (var xT = 0; xT < 5; xT++) {
+		for (var yT = 0; yT < 5; yT++) {
+			tileset[map[yT + cameraY][xT + cameraX]].draw(ctx, x + xT * 32, y + yT * 32);
+		}
+	}
 };
 
 selectorArmLength = 5;
@@ -95,26 +106,12 @@ var mainMap =
 	[3, 0, 3, 0, 3, 0, 3, 3, 0, 0, 3, 3],
 	[1, 2, 1, 3, 2, 0, 1, 2, 3, 2, 1, 0]];
 
-loadImages(["tiles.png"], function (images) {
-	var canvas = document.getElementById('tbtgame');
-	var ctx = canvas.getContext('2d');
-
-	ctx.mozImageSmoothingEnabled = false;
-	ctx.scale(3, 3);
-
-	var mainTileSet = makeTileSet(images[0], 2, 32, 32);
-
-	var selectorX = 0;
-	var selectorY = 0;
-	var cameraX = 0;
-	var cameraY = 0;
-	var sizeDir = +0.3;
-
-	var Inputs = {left:0, right:1, up:2, down:3, a:4, b:5, x:6, y:7};
+var Input = function() {
+	var buttons = {left:0, right:1, up:2, down:3, a:4, b:5, x:6, y:7};
 	var inputState = [false, false, false, false, false, false, false, false];
 	var newInputs = [];
 
-	var keyListener = function(e) {
+	var listener = function(e) {
 	  var keyboardMaps = [37, 39, 38, 40, 0, 0, 0, 0];
 		e = e || window.event;
 		var moveStep = 1;
@@ -127,6 +124,36 @@ loadImages(["tiles.png"], function (images) {
 		  inputState[idx] = false;
 		}
 	};
+
+	var tick = function() {
+		newInputs.length = 0;
+	};
+
+	return {
+		tick: tick,
+		listener: listener,
+		buttons: buttons,
+		inputState: inputState,
+		newInputs: newInputs
+	};
+}();
+
+var Inputs = Input.buttons;
+
+loadImages(["tiles.png"], function (images) {
+	var canvas = document.getElementById('tbtgame');
+	var ctx = canvas.getContext('2d');
+
+	ctx.mozImageSmoothingEnabled = false;
+	ctx.scale(3, 3);
+
+	var mainTileSet = makeTileSet(images[0], 2, 4, 32, 32);
+
+	var selectorX = 0;
+	var selectorY = 0;
+	var cameraX = 0;
+	var cameraY = 0;
+	var sizeDir = +0.3;
 
   var moveSelector = function(x, y) {
 	  selectorX = clamp(x, 0, 10);
@@ -149,10 +176,10 @@ loadImages(["tiles.png"], function (images) {
 	  selectorArmLength += sizeDir;
 		if (selectorArmLength > 6) sizeDir = -0.3;
 		if (selectorArmLength < 4) sizeDir = 0.3;
-		document.getElementById("mspf").innerHTML = '' + frameCounter();
+		document.getElementById("mspf").innerHTML = '' + FrameCounter();
 
-		for (var idx = 0; idx < newInputs.length; idx++) {
-			var inp = newInputs[idx];
+		for (var idx = 0; idx < Input.newInputs.length; idx++) {
+			var inp = Input.newInputs[idx];
 			switch (inp) {
 			case Inputs.left:
 				moveSelector(selectorX - 1, selectorY);
@@ -176,18 +203,17 @@ loadImages(["tiles.png"], function (images) {
 
 		// END LOGIC
 		
-		newInputs = [];
-
+		Input.tick();
 		draw();
 	};
 	
 	var draw = function() {
-		drawMap(mainMap, mainTileSet, cameraX, cameraY)(ctx, 0, 0);
+		drawMap(ctx, 0, 0, mainMap, mainTileSet, cameraX, cameraY);
 		drawSelector(ctx, (selectorX - cameraX) * 32, (selectorY - cameraY) * 32);
 	};
 
-	document.onkeydown = keyListener;
-	document.onkeyup = keyListener;
+	document.onkeydown = Input.listener;
+	document.onkeyup = Input.listener;
 	mainloop();
 });
 
