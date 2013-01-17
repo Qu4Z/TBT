@@ -367,6 +367,7 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 	var ctx = canvas.getContext('2d');
 
 	ctx.mozImageSmoothingEnabled = false;
+	ctx.webkitImageSmoothingEnabled = false;
 	ctx.scale(3, 3);
 
 	Widgets.push(Map);

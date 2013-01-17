@@ -4,11 +4,13 @@ Features:
  - Make tiles more than just images (ie can have attributes, etc)
  - Implement menu
 
-Bugs/cleanup:
+Bugs/cleanup/maintenance:
  - Make "view" more consistent. 
    - (May need to modify draw commands to take a rectangle, eg drawTile(a, b)(ctx, x, y, w, h) although that's probably premature optimisation)
  - Key Handler may be dropping keypresses (event listener vs tick())
  - Remove global 32x32 (tile size) constants, and global 5x5 (view size) constants
+
+ - Host it somewhere so Ed can commit. 
 
 Edward:
  - Design me some pretty menu-style please? (colors, fonts, borders, "current" icon/highlight)
