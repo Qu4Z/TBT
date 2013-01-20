@@ -1,8 +1,10 @@
 Features:
  - Unit movement (with semitransparent overlay)
-   - Just <x> squares for now, no tile-walkability
+   o Just <x> squares for now, no tile-walkability
+   - Once we have tiles, implement a smarter "distance" algorithm
  - Make tiles more than just images (ie can have attributes, etc)
  - Implement menu
+ - Make "border" around cursor so it can't be directly on the edge.
 
 Bugs/cleanup/maintenance:
  - Make "view" more consistent. 
@@ -10,7 +12,10 @@ Bugs/cleanup/maintenance:
  - Key Handler may be dropping keypresses (event listener vs tick())
  - Remove global 32x32 (tile size) constants, and global 5x5 (view size) constants
 
- - Host it somewhere so Ed can commit. 
-
 Edward:
  - Design me some pretty menu-style please? (colors, fonts, borders, "current" icon/highlight)
+
+DONE:
+ o Host it somewhere so Ed can commit
+ o Add units
+ o Add menu/text stack. Trigger menu by pressing A on empty terrain for now.

@@ -1,13 +1,22 @@
 var Util = function() {
 	var nullFunc = function () {};
+	var distanceTo = function(x1, y1, x2, y2) {
+		return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+	};
 	return {
-		nullFunc: nullFunc
+		nullFunc: nullFunc,
+		distanceTo: distanceTo
 	};
 }();
 
 var Colors = {
 	BackgroundBlue: "#0000AA",
 	TextGrey: "#CCCCCC"
+};
+
+var View = {
+	Width: 5,
+	Height: 5
 };
 
 var loadImages = function(images, cb) {
@@ -174,6 +183,8 @@ var Menu;
 
 loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
   Units = function() {
+		var selected = null;
+
 		var units = [];
 
 		units.push({ x: 1, y: 0, sprite: makeSprite(images[1]),
@@ -198,7 +209,52 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 			return null;
 		};
 
-		var draw = function(ctx, cameraX, cameraY) {
+		var select = function(x, y) {
+			var unit = unitAt(x, y);
+			if (unit)
+				selected = unit;
+		};
+
+		var unselect = function() {
+			selected = null;
+		}
+		
+		var current = function() {
+			return selected;
+		};
+
+		var moveTo = function(x, y) {
+			if (!selected)
+				return;
+			
+			if (inRange(selected, x, y) && !unitAt(x, y)) {
+				selected.x = x;
+				selected.y = y;
+				selected = null;
+			}
+		};
+
+		var inRange = function(unit, x, y) {
+			return Util.distanceTo(unit.x, unit.y, x, y) < 3; // TODO: unit.speed (also, terrain mods)
+		};
+
+		var drawMovement = function(ctx, cameraX, cameraY) {
+			if (selected) {
+				ctx.globalAlpha = 0.5;
+				for (var y = cameraY; y < cameraY + View.Height; y++) {
+					for (var x = cameraX; x < cameraX + View.Width; x++) {
+						if (inRange(selected, x, y)) {
+							ctx.fillColor = "rgb(0,255,0)";
+							ctx.fillRect((x - cameraX) * 32, (y - cameraY) * 32, 32, 32);
+						} else {
+						}
+					}
+				}
+				ctx.globalAlpha = 1;
+			}
+		};
+
+		var drawUnits = function(ctx, cameraX, cameraY) {
 			for (var i = 0; i < units.length; i++) {
 				if (Map.onScreen(units[i].x, units[i].y)) {
 					units[i].sprite.draw(ctx, (units[i].x - cameraX) * 32, (units[i].y - cameraY) * 32);
@@ -206,8 +262,17 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 			}
 		};
 
+		var draw = function(ctx, cameraX, cameraY) {
+			drawMovement(ctx, cameraX, cameraY);
+			drawUnits(ctx, cameraX, cameraY);
+		};
+
 		return {
 			unitAt: unitAt,
+			select: select,
+			unselect: unselect,
+			current: current,
+			moveTo: moveTo,
 			draw: draw
 		};
 	}();
@@ -313,6 +378,16 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 					break;
 				case Inputs.X:
 					Widgets.push(Menu);
+					break;
+				case Inputs.A:
+					if (!Units.current()) {
+						Units.select(selectorX, selectorY);
+					} else {
+						Units.moveTo(selectorX, selectorY);
+					}
+					break;
+				case Inputs.B:
+					Units.unselect();
 					break;
 				}
 			}
