@@ -183,8 +183,6 @@ var Menu;
 
 loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
   Units = function() {
-		var selected = null;
-
 		var units = [];
 
 		units.push({ x: 1, y: 0, sprite: makeSprite(images[1]),
@@ -209,28 +207,14 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 			return null;
 		};
 
-		var select = function(x, y) {
-			var unit = unitAt(x, y);
-			if (unit)
-				selected = unit;
-		};
-
-		var unselect = function() {
-			selected = null;
-		}
-		
-		var current = function() {
-			return selected;
-		};
-
 		var moveTo = function(x, y) {
-			if (!selected)
+			if (!Units.selected)
 				return;
 			
-			if (inRange(selected, x, y) && !unitAt(x, y)) {
-				selected.x = x;
-				selected.y = y;
-				selected = null;
+			if (inRange(Units.selected, x, y) && !unitAt(x, y)) {
+				Units.selected.x = x;
+				Units.selected.y = y;
+				Units.selected = null;
 			}
 		};
 
@@ -239,12 +223,12 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 		};
 
 		var drawMovement = function(ctx, cameraX, cameraY) {
-			if (selected) {
+			if (Units.selected) {
 				ctx.globalAlpha = 0.5;
+				ctx.fillStyle = "rgb(187,255,187)";
 				for (var y = cameraY; y < cameraY + View.Height; y++) {
 					for (var x = cameraX; x < cameraX + View.Width; x++) {
-						if (inRange(selected, x, y)) {
-							ctx.fillColor = "rgb(0,255,0)";
+						if (inRange(Units.selected, x, y)) {
 							ctx.fillRect((x - cameraX) * 32, (y - cameraY) * 32, 32, 32);
 						} else {
 						}
@@ -269,9 +253,7 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 
 		return {
 			unitAt: unitAt,
-			select: select,
-			unselect: unselect,
-			current: current,
+			selected: null,
 			moveTo: moveTo,
 			draw: draw
 		};
@@ -380,14 +362,14 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 					Widgets.push(Menu);
 					break;
 				case Inputs.A:
-					if (!Units.current()) {
-						Units.select(selectorX, selectorY);
+					if (!Units.selected) {
+						Units.selected = Units.unitAt(selectorX, selectorY);
 					} else {
 						Units.moveTo(selectorX, selectorY);
 					}
 					break;
 				case Inputs.B:
-					Units.unselect();
+					Units.selected = null;
 					break;
 				}
 			}

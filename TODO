@@ -1,6 +1,7 @@
 Features:
  - Unit movement (with semitransparent overlay)
    o Just <x> squares for now, no tile-walkability
+   - Add "facing" direction
    - Once we have tiles, implement a smarter "distance" algorithm
  - Make tiles more than just images (ie can have attributes, etc)
  - Implement menu
