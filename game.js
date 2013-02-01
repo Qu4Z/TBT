@@ -14,6 +14,12 @@ var Colors = {
 	TextGrey: "#CCCCCC"
 };
 
+var MoveState = {
+	Selecting: 0,
+	Moving:  1,
+	Attacking: 2
+};
+
 var View = {
 	Width: 5,
 	Height: 5
@@ -208,14 +214,49 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 		};
 
 		var moveTo = function(x, y) {
-			if (!Units.selected)
+			if (!Units.selected || Units.moveState != MoveState.Moving)
 				return;
 			
-			if (inRange(Units.selected, x, y) && !unitAt(x, y)) {
+			if (inRange(Units.selected, x, y) && (!unitAt(x, y) || unitAt(x, y) == Units.selected)) {
 				Units.selected.x = x;
 				Units.selected.y = y;
-				Units.selected = null;
+				var targets = Units.targets(Units.selected);
+				if (targets.length) {
+					Units.moveState = MoveState.Attacking;
+					Units.currentTargets = targets;
+				} else {
+					Units.moveState = MoveState.Selecting;
+					Units.selected = null;
+				}
 			}
+		};
+
+		var add_target = function(list, x, y) {
+			var unit = Units.unitAt(x, y);
+			if (unit)
+				list.push(unit);
+		};
+
+		var targets = function(whose) {
+			var x = whose.x, y = whose.y;
+			var result = [];
+			add_target(result, x + 1, y);
+			add_target(result, x - 1, y);
+			add_target(result, x, y + 1);
+			add_target(result, x, y - 1);
+			return result;
+		};
+
+		var attack = function(who) {
+			if (!who)
+				return;
+
+			if (who != Units.selected) {
+				who.hp -= 3;
+			}
+
+			Units.selected = null;
+			Units.moveState = MoveState.Selecting;
 		};
 
 		var inRange = function(unit, x, y) {
@@ -223,18 +264,23 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 		};
 
 		var drawMovement = function(ctx, cameraX, cameraY) {
-			if (Units.selected) {
+			if (Units.moveState == MoveState.Moving) {
 				ctx.globalAlpha = 0.5;
 				ctx.fillStyle = "rgb(187,255,187)";
 				for (var y = cameraY; y < cameraY + View.Height; y++) {
 					for (var x = cameraX; x < cameraX + View.Width; x++) {
 						if (inRange(Units.selected, x, y)) {
 							ctx.fillRect((x - cameraX) * 32, (y - cameraY) * 32, 32, 32);
-						} else {
 						}
 					}
 				}
 				ctx.globalAlpha = 1;
+			} else if (Units.moveState == MoveState.Attacking) {
+				ctx.fillStyle = "rgb(195,60,60)";
+				for (var target = 0; target < Units.currentTargets.length; target++) {
+					var enemy = Units.currentTargets[target];
+					ctx.fillRect((enemy.x - cameraX) * 32, (enemy.y - cameraY) * 32, 32, 32);
+				}
 			}
 		};
 
@@ -254,7 +300,10 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 		return {
 			unitAt: unitAt,
 			selected: null,
+			moveState: MoveState.Selecting,
 			moveTo: moveTo,
+			attack: attack,
+			targets: targets,
 			draw: draw
 		};
 	}();
@@ -320,6 +369,7 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 				ctx.rect(10, 10 + drawY, 50, 50);
 				ctx.fillStyle = Colors.TextGrey;
 				ctx.fillText(unit.name, 10, 20 + drawY);
+				ctx.fillText(unit.hp + "/" + unit.maxHp, 10, 30 + drawY);
 			}
 		};
 
@@ -362,14 +412,30 @@ loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
 					Widgets.push(Menu);
 					break;
 				case Inputs.A:
-					if (!Units.selected) {
-						Units.selected = Units.unitAt(selectorX, selectorY);
-					} else {
-						Units.moveTo(selectorX, selectorY);
+					switch (Units.moveState) {
+						case MoveState.Selecting:
+							Units.selected = Units.unitAt(selectorX, selectorY);
+							if (Units.selected) {
+								Units.oldX = Units.selected.x;
+								Units.oldY = Units.selected.y;
+								Units.moveState = MoveState.Moving;
+							}
+							break;
+						case MoveState.Moving:
+							Units.moveTo(selectorX, selectorY);
+							break;
+						case MoveState.Attacking:
+							Units.attack(Units.unitAt(selectorX, selectorY));
+							break;
 					}
 					break;
 				case Inputs.B:
+					if (Units.selected) {
+						Units.selected.x = Units.oldX;
+						Units.selected.y = Units.oldY;
+					}
 					Units.selected = null;
+					Units.moveState = MoveState.Selecting;
 					break;
 				}
 			}
