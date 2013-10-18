@@ -187,7 +187,7 @@ var Units;
 var Map;
 var Menu;
 
-loadImages(["tilemap.png", "enemy2.png", "player.png"], function (images) {
+loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.png"], function (images) {
   Units = function() {
 		var units = [];
 
