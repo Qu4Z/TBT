@@ -11,11 +11,15 @@ Bugs/cleanup/maintenance:
  - Make "view" more consistent. 
    - (May need to modify draw commands to take a rectangle, eg drawTile(a, b)(ctx, x, y, w, h) although that's probably premature optimisation)
  - Key Handler may be dropping keypresses (event listener vs tick())
- - Remove global 32x32 (tile size) constants, and global 5x5 (view size) constants
- - Why does an alert in moveTo fire multiple times?
+ o Remove global 32x32 (tile size) constants, and global 5x5 (view size) constants   
+ - Why does an alert in moveTo fire multiple times? *******
 
-Edward:
+Misc:
+ - Write out design document with all the ideas in my brain before I forget...
+
+@Edward:
  - Design me some pretty menu-style please? (colors, fonts, borders, "current" icon/highlight)
+ - Play TBTs and talk with me about design
 
 DONE:
  o Host it somewhere so Ed can commit

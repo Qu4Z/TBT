@@ -1,13 +1,26 @@
+Array.prototype.isArray = true; // l33t h4x
+
 var Util = function() {
 	var nullFunc = function () {};
 	var distanceTo = function(x1, y1, x2, y2) {
 		return Math.abs(x1 - x2) + Math.abs(y1 - y2);
 	};
+	var clamp = function(val, min, max) {
+		return (val < min) ? min : (val > max) ? max : val;
+	};
+	var nextInArray = function(array, current, loop) {
+		var idx = array.indexOf(current) + 1;
+		return array[idx % array.length];
+	};
 	return {
 		nullFunc: nullFunc,
-		distanceTo: distanceTo
+		distanceTo: distanceTo,
+		clamp: clamp,
+		nextInArray: nextInArray,
 	};
 }();
+
+var TileSize = 32;
 
 var Colors = {
 	BackgroundBlue: "#0000AA",
@@ -21,7 +34,7 @@ var MoveState = {
 };
 
 var View = {
-	Width: 5,
+	Width: 6,
 	Height: 5
 };
 
@@ -54,10 +67,6 @@ var FrameCounter = function () {
 		return spf;
 	}	
 }();
-
-var clamp = function(val, min, max) {
-	return (val < min) ? min : (val > max) ? max : val;
-};
 
 var makeTileSet = function () { 
 	var drawTile = function(ctx, x, y, tile) {
@@ -153,7 +162,9 @@ var Widgets = function () {
 	};
 
 	var pop = function(widget) {
-		widgetStack.pop();
+		var popped = null;
+		while (popped != widget)
+			popped = widgetStack.pop();
 	};
 
 	var step = function() {
@@ -166,20 +177,84 @@ var Widgets = function () {
 		for (var i = 0; i < widgetStack.length; i++) {
 			widgetStack[i].draw(ctx);
 		}
-	}
+	};
 
 	var handleInput = function(inputs) {
 		if ((widgetStack.length > 0) && (inputs.length > 0)) {
 			widgetStack[widgetStack.length - 1].handleInput(inputs);
 		}
-	}
+	};
+
+	var onStack = function(widget) {
+		return widgetStack.indexOf(widget) >= 0;
+	};
 
 	return {
 		step: step,
 		handleInput: handleInput,
 		draw: draw,
 		push: push,
-		pop: pop
+		pop: pop,
+		onStack: onStack,
+	};
+}();
+
+var Dialog = function () {
+	var anim = ['-', '/', '|', '\\'];
+	var makeDialog = function (message, after) {
+		var chr = '-';
+		var handleInput = function (inputs) {
+			for (var idx = 0; idx < inputs.length; idx++) {
+				switch (inputs[idx]) {
+					case Inputs.A:
+					case Inputs.B:
+						Widgets.pop(this);
+						if (after)
+							after();
+						break;
+					case Inputs.X:
+						if (!Widgets.onStack(Menu))
+							Widgets.push(Menu);
+						break;
+				}
+			}
+		};
+		var draw = function (ctx) {
+			var y = Map.positionBoxY(40);
+			ctx.fillStyle = Colors.BackgroundBlue;;
+			ctx.fillRect(10, y, 170, 40);
+			ctx.fillStyle = Colors.TextGrey;
+			ctx.fillText(message + ' ' + chr, 30, y + 20);
+		};
+		var step = function () {
+			chr = Util.nextInArray(anim, chr, true);
+		};
+		return {
+			step: step,
+			handleInput: handleInput,
+			draw: draw,
+		};
+	};
+
+	var show = function (message, after) {
+		if (!message.isArray) {
+			Widgets.push(makeDialog(message, after));
+		} else {
+			var next = after;
+			for (var i = message.length; i > 0; i--) {
+				// Introduce a new scope. Godammit, js
+				(function () {
+					var cont = next;
+					var msg = message[i - 1];
+					next = function() { Dialog.show(msg, cont); };
+				})();
+			}
+			next();
+		}
+	};
+
+	return {
+		show: show,
 	};
 }();
 
@@ -191,16 +266,25 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
   Units = function() {
 		var units = [];
 
-		units.push({ x: 1, y: 0, sprite: makeSprite(images[1]),
-			name: "Soldier",
-			hp: 10,
-			maxHp: 10
-		});
+		var spawnSoldier = function(x, y, name) {
+			units.push({ x: x, y: y, sprite: makeSprite(images[1]),
+				name: "Soldier" + (name ? " " + name : ""),
+				hp: 10,
+				maxHp: 10,
+				moveSpeed: 2,
+				die: function () { Dialog.show(this.name + ": Ergh") },
+			});
+		};
+		spawnSoldier(1, 0, "A");
+		spawnSoldier(8, 5, "B");
+		spawnSoldier(4, 3, "C");
 
 		units.push({ x: 3, y: 4, sprite: makeSprite(images[2]),
 			name: "Player",
 			hp: 7,
-			maxHp: 12
+			maxHp: 12,
+			moveSpeed: 3,
+			die: function () { Dialog.show("You died :(", function () { location.reload() }); },
 		});
 
 		var unitAt = function(x, y) {
@@ -213,11 +297,18 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 			return null;
 		};
 
+		var removeUnit = function(unit) {
+			var idx = units.indexOf(unit);
+			if (idx >= 0) {
+				units.splice(idx, 1);
+			}
+		};
+
 		var moveTo = function(x, y) {
 			if (!Units.selected || Units.moveState != MoveState.Moving)
 				return;
 			
-			if (inRange(Units.selected, x, y) && (!unitAt(x, y) || unitAt(x, y) == Units.selected)) {
+			if (canMoveTo(Units.selected, x, y)) {
 				Units.selected.x = x;
 				Units.selected.y = y;
 				var targets = Units.targets(Units.selected);
@@ -253,6 +344,10 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 
 			if (who != Units.selected) {
 				who.hp -= 3;
+				if (who.hp <= 0) {
+					who.die();
+					removeUnit(who);
+				}
 			}
 
 			Units.selected = null;
@@ -260,7 +355,11 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 		};
 
 		var inRange = function(unit, x, y) {
-			return Util.distanceTo(unit.x, unit.y, x, y) < 3; // TODO: unit.speed (also, terrain mods)
+			return Util.distanceTo(unit.x, unit.y, x, y) <= unit.moveSpeed; // TODO: terrain mods
+		};
+
+		var canMoveTo = function(unit, x, y) {
+			return inRange(unit, x, y) && (!unitAt(x, y) || unitAt(x, y) == Units.selected);
 		};
 
 		var drawMovement = function(ctx, cameraX, cameraY) {
@@ -269,8 +368,8 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 				ctx.fillStyle = "rgb(187,255,187)";
 				for (var y = cameraY; y < cameraY + View.Height; y++) {
 					for (var x = cameraX; x < cameraX + View.Width; x++) {
-						if (inRange(Units.selected, x, y)) {
-							ctx.fillRect((x - cameraX) * 32, (y - cameraY) * 32, 32, 32);
+						if (canMoveTo(Units.selected, x, y)) {
+							ctx.fillRect((x - cameraX) * TileSize, (y - cameraY) * TileSize, TileSize, TileSize);
 						}
 					}
 				}
@@ -279,7 +378,7 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 				ctx.fillStyle = "rgb(195,60,60)";
 				for (var target = 0; target < Units.currentTargets.length; target++) {
 					var enemy = Units.currentTargets[target];
-					ctx.fillRect((enemy.x - cameraX) * 32, (enemy.y - cameraY) * 32, 32, 32);
+					ctx.fillRect((enemy.x - cameraX) * TileSize, (enemy.y - cameraY) * TileSize, TileSize, TileSize);
 				}
 			}
 		};
@@ -287,7 +386,7 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 		var drawUnits = function(ctx, cameraX, cameraY) {
 			for (var i = 0; i < units.length; i++) {
 				if (Map.onScreen(units[i].x, units[i].y)) {
-					units[i].sprite.draw(ctx, (units[i].x - cameraX) * 32, (units[i].y - cameraY) * 32);
+					units[i].sprite.draw(ctx, (units[i].x - cameraX) * TileSize, (units[i].y - cameraY) * TileSize);
 				}
 			}
 		};
@@ -309,7 +408,7 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 	}();
 
 	Map = function() {
-		var mainTileSet = makeTileSet(images[0], 3, 3, 32, 32);
+		var mainTileSet = makeTileSet(images[0], 3, 3, TileSize, TileSize);
 
 		var selectorX = 0;
 		var selectorY = 0;
@@ -320,21 +419,21 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 		var sizeDir = +0.3;
 
 		var onScreen = function(x, y) {
-			return (x >= cameraX) && (y >= cameraY) && (x < cameraX + 5) && (y < cameraY + 5);
+			return (x >= cameraX) && (y >= cameraY) && (x < cameraX + View.Width) && (y < cameraY + View.Height);
 		};
 
 		var drawMap = function(ctx, x, y, map, tileset, cameraX, cameraY) {
-			for (var xT = 0; xT < 5; xT++) {
-				for (var yT = 0; yT < 5; yT++) {
-					tileset[map[yT + cameraY][xT + cameraX]].draw(ctx, x + xT * 32, y + yT * 32);
+			for (var xT = 0; xT < View.Width; xT++) {
+				for (var yT = 0; yT < View.Height; yT++) {
+					tileset[map[yT + cameraY][xT + cameraX]].draw(ctx, x + xT * TileSize, y + yT * TileSize);
 				}
 			}
 		};
 
 		var drawSelector = function(ctx, x, y) {
 			var size = selectorArmLength;
-			var w = 32;
-			var h = 32;
+			var w = TileSize;
+			var h = TileSize;
 			var offset = 1;
 			ctx.strokeStyle = "rgb(255,255,255)";
 			ctx.beginPath();
@@ -362,34 +461,38 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 		var drawUnitInfo = function(ctx) {
 			var unit = Units.unitAt(selectorX, selectorY);
 			if (unit) {
-				var drawY = (selectorY - cameraY > 2) ? 0 : 90;
+				var drawY = Map.positionBoxY(50);
 				ctx.fillStyle = Colors.BackgroundBlue;
 				ctx.strokeStyle = Colors.TextGrey;
-				ctx.fillRect(10, 10 + drawY, 50, 50);
-				ctx.rect(10, 10 + drawY, 50, 50);
+				ctx.fillRect(10, drawY, 50, 50);
+				ctx.rect(10, drawY, 50, 50);
 				ctx.fillStyle = Colors.TextGrey;
-				ctx.fillText(unit.name, 10, 20 + drawY);
-				ctx.fillText(unit.hp + "/" + unit.maxHp, 10, 30 + drawY);
+				ctx.fillText(unit.name, 10, 10 + drawY);
+				ctx.fillText(unit.hp + "/" + unit.maxHp, 10, 20 + drawY);
 			}
 		};
 
 		var moveSelector = function(x, y) {
-			selectorX = clamp(x, 0, 10);
+			selectorX = Util.clamp(x, 0, Map.Width - 1);
 			if (selectorX < cameraX)
 				cameraX = selectorX;
-			if (selectorX > cameraX + 4)
-				cameraX = selectorX - 4;
-			selectorY = clamp(y, 0, 10);
+			if (selectorX >= cameraX + View.Width)
+				cameraX = selectorX - View.Width + 1;
+			selectorY = Util.clamp(y, 0, Map.Height - 1);
 			if (selectorY < cameraY)
 				cameraY = selectorY;
-			if (selectorY > cameraY + 4)
-				cameraY = selectorY - 4;
+			if (selectorY >= cameraY + View.Height)
+				cameraY = selectorY - View.Height + 1;
 		};
 
 		var step = function() {
 			selectorArmLength += sizeDir;
 			if (selectorArmLength > 6) sizeDir = -0.3;
 			if (selectorArmLength < 4) sizeDir = 0.3;
+		};
+
+		var positionBoxY = function(height) {
+			return (selectorY - cameraY > View.Height / 2) ? 10 : (TileSize * View.Height) - height - 10;
 		};
 
 		var handleInput = function(inputs) {
@@ -433,9 +536,16 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 					if (Units.selected) {
 						Units.selected.x = Units.oldX;
 						Units.selected.y = Units.oldY;
+						if (Units.moveState == MoveState.Attacking) {
+							Units.moveState = MoveState.Moving;
+						} else {
+							Units.moveState = MoveState.Selecting;
+							Units.selected = null;
+						}
+					} else {
+						Units.selected = null;
+						Units.moveState = MoveState.Selecting;
 					}
-					Units.selected = null;
-					Units.moveState = MoveState.Selecting;
 					break;
 				}
 			}
@@ -444,7 +554,7 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 		var draw = function(ctx) {
 			drawMap(ctx, 0, 0, mainMap, mainTileSet, cameraX, cameraY);
 			Units.draw(ctx, cameraX, cameraY);
-			drawSelector(ctx, (selectorX - cameraX) * 32, (selectorY - cameraY) * 32);
+			drawSelector(ctx, (selectorX - cameraX) * TileSize, (selectorY - cameraY) * TileSize);
 			drawUnitInfo(ctx);
 		}
 
@@ -452,7 +562,10 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 			step: step,
 			draw: draw,
 			handleInput: handleInput,
-			onScreen: onScreen
+			onScreen: onScreen,
+			positionBoxY: positionBoxY,
+			Width: 12,
+			Height: 11,
 		};
 	}();
 
@@ -467,7 +580,7 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 
 		var handleInput = function(inputs) {
 			if (inputs.indexOf(Inputs.B) >= 0) {
-				Widgets.pop();
+				Widgets.pop(Menu);
 			}
 		};
 
@@ -499,15 +612,15 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 		setTimeout(mainloop, 30);
 		document.getElementById("mspf").innerHTML = '' + FrameCounter();
 		
-		// START LOGIC
 		Widgets.handleInput(Input.newInputs);
 		Widgets.step();
-
-		// END LOGIC
-		
 		Widgets.draw(ctx);
 		Input.tick();
 	};
+
+	Dialog.show(["X selects units.", 
+			"Z goes back.", 
+			"Arrows move cursor."]);
 	
 	mainloop();
 });
