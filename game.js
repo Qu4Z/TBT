@@ -276,29 +276,6 @@ loadImages(["tiles/country.png",
   Units = function() {
 		var units = [];
 
-		var spawnSoldier = function(x, y, name) {
-			units.push({ x: x, y: y, standingSprite: images.slice(1,5),
-				name: "Soldier" + (name ? " " + name : ""),
-				hp: 10,
-				maxHp: 10,
-				moveSpeed: 2,
-				die: function () { Dialog.show(this.name + ": Ergh") },
-				facing: Direction.Down,
-			});
-		};
-		spawnSoldier(1, 0, "A");
-		spawnSoldier(8, 5, "B");
-		spawnSoldier(4, 3, "C");
-
-		units.push({ x: 3, y: 4, standingSprite: images.slice(5,9),
-			name: "Player",
-			hp: 7,
-			maxHp: 12,
-			moveSpeed: 3,
-			die: function () { Dialog.show("You died :(", function () { location.reload() }); },
-			facing: Direction.Up,
-		});
-
 		var unitAt = function(x, y) {
 			for (var i = 0; i < units.length; i++) {
 				var unit = units[i];
@@ -317,22 +294,12 @@ loadImages(["tiles/country.png",
 		};
 
 		var moveTo = function(x, y) {
-			if (!Units.selected || Units.moveState != MoveState.Moving)
-				return;
-			
-			if (canMoveTo(Units.selected, x, y)) {
-				if (Units.selected.x != x || Units.selected.y != y)
-					Units.selected.facing = Util.getDirection(Units.selected.x, Units.selected.y, x, y);
-				Units.selected.x = x;
-				Units.selected.y = y;
-				var targets = Units.targets(Units.selected);
-				if (targets.length) {
-					Units.moveState = MoveState.Attacking;
-					Units.currentTargets = targets;
-				} else {
-					Units.moveState = MoveState.Selecting;
-					Units.selected = null;
-				}
+			if (canMoveTo(this, x, y)) {
+				if (this.x != x || this.y != y)
+					this.facing = Util.getDirection(this.x, this.y, x, y);
+				this.x = x;
+				this.y = y;
+				return true;
 			}
 		};
 
@@ -356,9 +323,8 @@ loadImages(["tiles/country.png",
 			if (!who)
 				return;
 
-			if (who != Units.selected) {
-				var attacker = Units.selected;
-				attacker.facing = Util.getDirection(attacker.x, attacker.y, who.x, who.y);
+			if (who != this) {
+				this.facing = Util.getDirection(this.x, this.y, who.x, who.y);
 				who.hp -= 3;
 				if (who.hp <= 0) {
 					who.die();
@@ -366,8 +332,7 @@ loadImages(["tiles/country.png",
 				}
 			}
 
-			Units.selected = null;
-			Units.moveState = MoveState.Selecting;
+			return true;
 		};
 
 		var inRange = function(unit, x, y) {
@@ -375,7 +340,7 @@ loadImages(["tiles/country.png",
 		};
 
 		var canMoveTo = function(unit, x, y) {
-			return inRange(unit, x, y) && (!unitAt(x, y) || unitAt(x, y) == Units.selected);
+			return inRange(unit, x, y) && (!unitAt(x, y) || unitAt(x, y) == unit);
 		};
 
 		var drawMovement = function(ctx, cameraX, cameraY) {
@@ -412,11 +377,40 @@ loadImages(["tiles/country.png",
 			drawUnits(ctx, cameraX, cameraY);
 		};
 
+		var createUnit = function(unit) {
+			unit.moveTo = moveTo;
+			unit.attack = attack;
+			units.push(unit);
+		};
+
+		var spawnSoldier = function(x, y, name) {
+			createUnit({ x: x, y: y, standingSprite: images.slice(1,5),
+				name: "Soldier" + (name ? " " + name : ""),
+				hp: 10,
+				maxHp: 10,
+				moveSpeed: 2,
+				die: function () { Dialog.show(this.name + ": Ergh") },
+				facing: Direction.Down,
+			});
+		};
+		spawnSoldier(1, 0, "A");
+		spawnSoldier(8, 5, "B");
+		spawnSoldier(4, 3, "C");
+
+		createUnit({ x: 3, y: 4, standingSprite: images.slice(5,9),
+			name: "Player",
+			hp: 7,
+			maxHp: 12,
+			moveSpeed: 3,
+			die: function () { Dialog.show("You died :(", function () { location.reload() }); },
+			facing: Direction.Up,
+		});
+
+
 		return {
 			unitAt: unitAt,
 			selected: null,
 			moveState: MoveState.Selecting,
-			moveTo: moveTo,
 			attack: attack,
 			targets: targets,
 			draw: draw
@@ -541,10 +535,22 @@ loadImages(["tiles/country.png",
 							}
 							break;
 						case MoveState.Moving:
-							Units.moveTo(selectorX, selectorY);
+							if (Units.selected.moveTo(selectorX, selectorY)) {
+								var targets = Units.targets(Units.selected);
+								if (targets.length) {
+									Units.moveState = MoveState.Attacking;
+									Units.currentTargets = targets;
+								} else {
+									Units.moveState = MoveState.Selecting;
+									Units.selected = null;
+								}
+							}
 							break;
 						case MoveState.Attacking:
-							Units.attack(Units.unitAt(selectorX, selectorY));
+							if (Units.selected.attack(Units.unitAt(selectorX, selectorY))) {
+								Units.selected = null;
+								Units.moveState = MoveState.Selecting;
+							}
 							break;
 					}
 					break;
