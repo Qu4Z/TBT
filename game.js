@@ -1,5 +1,12 @@
 Array.prototype.isArray = true; // l33t h4x
 
+var Direction = {
+	Right: 0,
+	Up: 1,
+	Left: 2,
+	Down: 3,
+};
+
 var Util = function() {
 	var nullFunc = function () {};
 	var distanceTo = function(x1, y1, x2, y2) {
@@ -12,11 +19,20 @@ var Util = function() {
 		var idx = array.indexOf(current) + 1;
 		return array[idx % array.length];
 	};
+	var getDirection = function(x_from, y_from, x_to, y_to) {
+		var xdiff = (x_to - x_from);
+		var ydiff = (y_to - y_from);
+		if (Math.abs(xdiff) >= Math.abs(ydiff)) 
+			return xdiff > 0 ? Direction.Right : Direction.Left;
+		else
+			return ydiff > 0 ? Direction.Down : Direction.Up;
+	};
 	return {
 		nullFunc: nullFunc,
 		distanceTo: distanceTo,
 		clamp: clamp,
 		nextInArray: nextInArray,
+		getDirection: getDirection,
 	};
 }();
 
@@ -38,11 +54,16 @@ var View = {
 	Height: 5
 };
 
+var drawImage = function(ctx, x, y) {
+	ctx.drawImage(this, x, y);
+};
+
 var loadImages = function(images, cb) {
 	var count = 0;
 	var result = [];
 	for (var i = 0; i < images.length; i++) {
 		var img = new Image();
+		img.draw = drawImage;
 		result.push(img);
 		img.onload = function() {
 			if (++count == images.length) {
@@ -88,20 +109,6 @@ var makeTileSet = function () {
 			});
 		}
 		return tiles;
-	};
-}();
-
-var makeSprite = function() {
-	var drawSprite = function(ctx, x, y, sprite) {
-		sprite = sprite || this;
-		ctx.drawImage(sprite.image, x, y);
-	};
-
-	return function(image) {
-		return {
-			draw: drawSprite,
-			image: image
-		};
 	};
 }();
 
@@ -262,29 +269,34 @@ var Units;
 var Map;
 var Menu;
 
-loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.png"], function (images) {
+loadImages(["tiles/country.png", 
+		"enemy/standing/right.png", "enemy/standing/up.png", "enemy/standing/left.png", "enemy/standing/down.png", 
+		"player/standing/right.png", "player/standing/up.png", "player/standing/left.png", "player/standing/down.png", 
+		], function (images) {
   Units = function() {
 		var units = [];
 
 		var spawnSoldier = function(x, y, name) {
-			units.push({ x: x, y: y, sprite: makeSprite(images[1]),
+			units.push({ x: x, y: y, standingSprite: images.slice(1,5),
 				name: "Soldier" + (name ? " " + name : ""),
 				hp: 10,
 				maxHp: 10,
 				moveSpeed: 2,
 				die: function () { Dialog.show(this.name + ": Ergh") },
+				facing: Direction.Down,
 			});
 		};
 		spawnSoldier(1, 0, "A");
 		spawnSoldier(8, 5, "B");
 		spawnSoldier(4, 3, "C");
 
-		units.push({ x: 3, y: 4, sprite: makeSprite(images[2]),
+		units.push({ x: 3, y: 4, standingSprite: images.slice(5,9),
 			name: "Player",
 			hp: 7,
 			maxHp: 12,
 			moveSpeed: 3,
 			die: function () { Dialog.show("You died :(", function () { location.reload() }); },
+			facing: Direction.Up,
 		});
 
 		var unitAt = function(x, y) {
@@ -309,6 +321,8 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 				return;
 			
 			if (canMoveTo(Units.selected, x, y)) {
+				if (Units.selected.x != x || Units.selected.y != y)
+					Units.selected.facing = Util.getDirection(Units.selected.x, Units.selected.y, x, y);
 				Units.selected.x = x;
 				Units.selected.y = y;
 				var targets = Units.targets(Units.selected);
@@ -343,6 +357,8 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 				return;
 
 			if (who != Units.selected) {
+				var attacker = Units.selected;
+				attacker.facing = Util.getDirection(attacker.x, attacker.y, who.x, who.y);
 				who.hp -= 3;
 				if (who.hp <= 0) {
 					who.die();
@@ -386,7 +402,7 @@ loadImages(["tiles/country.png", "enemy/standing/down.png", "player/standing/up.
 		var drawUnits = function(ctx, cameraX, cameraY) {
 			for (var i = 0; i < units.length; i++) {
 				if (Map.onScreen(units[i].x, units[i].y)) {
-					units[i].sprite.draw(ctx, (units[i].x - cameraX) * TileSize, (units[i].y - cameraY) * TileSize);
+					units[i].standingSprite[units[i].facing].draw(ctx, (units[i].x - cameraX) * TileSize, (units[i].y - cameraY) * TileSize);
 				}
 			}
 		};
