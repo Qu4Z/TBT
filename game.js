@@ -27,12 +27,34 @@ var Util = function() {
 		else
 			return ydiff > 0 ? Direction.Down : Direction.Up;
 	};
+	var applyDirection = function(position, direction, num) {
+		switch (direction) {
+			case Direction.Right:
+				return { x: position.x + num, y: position.y };
+			case Direction.Up:
+				return { x: position.x, y: position.y - num };
+			case Direction.Left:
+				return { x: position.x - num, y: position.y };
+			case Direction.Down:
+				return { x: position.x, y: position.y + num };
+		}
+	};
+	var oppositeDir = function(dir) {
+		switch (dir) {
+			case Direction.Right: return Direction.Left;
+			case Direction.Left: return Direction.Right;
+			case Direction.Up: return Direction.Down;
+			case Direction.Down: return Direction.Up;
+		};
+	};
 	return {
 		nullFunc: nullFunc,
 		distanceTo: distanceTo,
 		clamp: clamp,
 		nextInArray: nextInArray,
 		getDirection: getDirection,
+		applyDirection: applyDirection,
+		oppositeDir: oppositeDir,
 	};
 }();
 
@@ -269,153 +291,219 @@ var Units;
 var Map;
 var Menu;
 
+Unit = function() {
+	var units = [];
+
+	var unitAt = function(x, y) {
+		for (var i = 0; i < units.length; i++) {
+			var unit = units[i];
+			if (unit.x == x && unit.y == y) {
+				return unit;
+			}
+		}
+		return null;
+	};
+
+	var removeUnit = function(unit) {
+		var idx = units.indexOf(unit);
+		if (idx >= 0) {
+			units.splice(idx, 1);
+		}
+	};
+
+	var moveTo = function(x, y) {
+		if (y === undefined) {
+			y = x.y;
+			x = x.x;
+		}
+		if (this.canMoveTo(x, y)) {
+			if (this.x != x || this.y != y)
+				this.facing = Util.getDirection(this.x, this.y, x, y);
+			this.x = x;
+			this.y = y;
+			if (mainMap[y][x] == 2) {
+				this.addEffect("InWater");
+			} else {
+				this.removeEffect("InWater");
+			}
+			this.recalcStrength();
+			return true;
+		}
+	};
+
+	var add_target = function(list, x, y) {
+		var unit = Unit.unitAt(x, y);
+		if (unit)
+			list.push(unit);
+	};
+
+	var targets = function(whose) {
+		var x = whose.x, y = whose.y;
+		var result = [];
+		add_target(result, x + 1, y);
+		add_target(result, x - 1, y);
+		add_target(result, x, y + 1);
+		add_target(result, x, y - 1);
+		return result;
+	};
+
+	var getFlankingMod = function(attackDir, faceDir) {
+		if (attackDir == faceDir)
+			return 2;
+		if (attackDir == Util.oppositeDir(faceDir))
+			return 1;
+		return 1.5;
+	};
+
+	var attack = function(who) {
+		if (!who)
+			return;
+
+		if (who != this) {
+			this.facing = Util.getDirection(this.x, this.y, who.x, who.y);
+			if (who.inCombatWith().length == 1)
+				who.facing = Util.getDirection(who.x, who.y, this.x, this.y);
+
+			var yourStrength = this.currentStrength * getFlankingMod(this.facing, who.facing);
+			console.log("Base str: " + this.currentStrength + ", modified: " + yourStrength);
+			if (yourStrength >= who.currentStrength + 15) {
+				who.die();
+				removeUnit(who);
+			} else {
+				if (who.moveTo(Util.applyDirection({ x: who.x, y: who.y }, 
+						this.facing, 1))) {
+					who.facing = Util.getDirection(who.x, who.y, this.x, this.y);
+					this.moveTo(Util.applyDirection({ x: this.x, y: this.y }, this.facing, 1));
+				}
+			}
+		} 
+		return true;
+	};
+
+	var inRange = function(unit, x, y) {
+		if (x < 0 || x >= Map.Width || y < 0 || y >= Map.Height)
+			return false;
+		return Util.distanceTo(unit.x, unit.y, x, y) <= unit.moveSpeed; // TODO: terrain mods
+	};
+
+	var canMoveTo = function(x, y) {
+		return inRange(this, x, y) && (!unitAt(x, y) || unitAt(x, y) == this);
+	};
+
+	var addEffect = function(effect) {
+		this.effects[effect] = true;
+	};
+
+	var removeEffect = function(effect) {
+		this.effects[effect] = undefined;
+	};
+
+	var recalcStrength = function() {
+		var newStr = this.strength;
+		if (this.effects["InWater"]) {
+			newStr -= 20;
+		}
+		this.currentStrength = newStr;
+	};
+
+	var inCombatWith = function() {
+		return targets(this); // TODO
+	};
+
+	var createUnit = function(unit) {
+		unit.moveTo = moveTo;
+		unit.attack = attack;
+		unit.effects = {};
+		unit.inCombatWith = inCombatWith;
+		unit.addEffect = addEffect;
+		unit.removeEffect = removeEffect;
+		unit.recalcStrength = recalcStrength;
+		unit.currentStrength = unit.strength;
+		unit.canMoveTo = canMoveTo;
+
+		units.push(unit);
+	};
+
+	var getUnits = function () {
+		return units;
+	};
+
+	return {
+		createUnit: createUnit,
+		getUnits: getUnits,
+		targets: targets,
+		unitAt: unitAt,
+	};
+}();
+
+var Units = function() {
+	var drawMovement = function(ctx, cameraX, cameraY) {
+		if (Units.moveState == MoveState.Moving) {
+			ctx.globalAlpha = 0.5;
+			ctx.fillStyle = "rgb(187,255,187)";
+			for (var y = cameraY; y < cameraY + View.Height; y++) {
+				for (var x = cameraX; x < cameraX + View.Width; x++) {
+					if (Units.selected.canMoveTo(x, y)) {
+						ctx.fillRect((x - cameraX) * TileSize, (y - cameraY) * TileSize, TileSize, TileSize);
+					}
+				}
+			}
+			ctx.globalAlpha = 1;
+		} else if (Units.moveState == MoveState.Attacking) {
+			ctx.fillStyle = "rgb(195,60,60)";
+			for (var target = 0; target < Units.currentTargets.length; target++) {
+				var enemy = Units.currentTargets[target];
+				ctx.fillRect((enemy.x - cameraX) * TileSize, (enemy.y - cameraY) * TileSize, TileSize, TileSize);
+			}
+		}
+	};
+
+	var drawUnits = function(ctx, cameraX, cameraY) {
+		var units = Unit.getUnits();
+		for (var i = 0; i < units.length; i++) {
+			if (Map.onScreen(units[i].x, units[i].y)) {
+				units[i].standingSprite[units[i].facing].draw(ctx, (units[i].x - cameraX) * TileSize, (units[i].y - cameraY) * TileSize);
+			}
+		}
+	};
+
+	var draw = function(ctx, cameraX, cameraY) {
+		drawMovement(ctx, cameraX, cameraY);
+		drawUnits(ctx, cameraX, cameraY);
+	};
+
+	return {
+		draw: draw,
+		moveState: MoveState.Selecting,
+		selected: null,
+	};
+}();
+
 loadImages(["tiles/country.png", 
 		"enemy/standing/right.png", "enemy/standing/up.png", "enemy/standing/left.png", "enemy/standing/down.png", 
 		"player/standing/right.png", "player/standing/up.png", "player/standing/left.png", "player/standing/down.png", 
 		], function (images) {
-  Units = function() {
-		var units = [];
 
-		var unitAt = function(x, y) {
-			for (var i = 0; i < units.length; i++) {
-				var unit = units[i];
-				if (unit.x == x && unit.y == y) {
-					return unit;
-				}
-			}
-			return null;
-		};
-
-		var removeUnit = function(unit) {
-			var idx = units.indexOf(unit);
-			if (idx >= 0) {
-				units.splice(idx, 1);
-			}
-		};
-
-		var moveTo = function(x, y) {
-			if (canMoveTo(this, x, y)) {
-				if (this.x != x || this.y != y)
-					this.facing = Util.getDirection(this.x, this.y, x, y);
-				this.x = x;
-				this.y = y;
-				return true;
-			}
-		};
-
-		var add_target = function(list, x, y) {
-			var unit = Units.unitAt(x, y);
-			if (unit)
-				list.push(unit);
-		};
-
-		var targets = function(whose) {
-			var x = whose.x, y = whose.y;
-			var result = [];
-			add_target(result, x + 1, y);
-			add_target(result, x - 1, y);
-			add_target(result, x, y + 1);
-			add_target(result, x, y - 1);
-			return result;
-		};
-
-		var attack = function(who) {
-			if (!who)
-				return;
-
-			if (who != this) {
-				this.facing = Util.getDirection(this.x, this.y, who.x, who.y);
-				who.hp -= 3;
-				if (who.hp <= 0) {
-					who.die();
-					removeUnit(who);
-				}
-			}
-
-			return true;
-		};
-
-		var inRange = function(unit, x, y) {
-			return Util.distanceTo(unit.x, unit.y, x, y) <= unit.moveSpeed; // TODO: terrain mods
-		};
-
-		var canMoveTo = function(unit, x, y) {
-			return inRange(unit, x, y) && (!unitAt(x, y) || unitAt(x, y) == unit);
-		};
-
-		var drawMovement = function(ctx, cameraX, cameraY) {
-			if (Units.moveState == MoveState.Moving) {
-				ctx.globalAlpha = 0.5;
-				ctx.fillStyle = "rgb(187,255,187)";
-				for (var y = cameraY; y < cameraY + View.Height; y++) {
-					for (var x = cameraX; x < cameraX + View.Width; x++) {
-						if (canMoveTo(Units.selected, x, y)) {
-							ctx.fillRect((x - cameraX) * TileSize, (y - cameraY) * TileSize, TileSize, TileSize);
-						}
-					}
-				}
-				ctx.globalAlpha = 1;
-			} else if (Units.moveState == MoveState.Attacking) {
-				ctx.fillStyle = "rgb(195,60,60)";
-				for (var target = 0; target < Units.currentTargets.length; target++) {
-					var enemy = Units.currentTargets[target];
-					ctx.fillRect((enemy.x - cameraX) * TileSize, (enemy.y - cameraY) * TileSize, TileSize, TileSize);
-				}
-			}
-		};
-
-		var drawUnits = function(ctx, cameraX, cameraY) {
-			for (var i = 0; i < units.length; i++) {
-				if (Map.onScreen(units[i].x, units[i].y)) {
-					units[i].standingSprite[units[i].facing].draw(ctx, (units[i].x - cameraX) * TileSize, (units[i].y - cameraY) * TileSize);
-				}
-			}
-		};
-
-		var draw = function(ctx, cameraX, cameraY) {
-			drawMovement(ctx, cameraX, cameraY);
-			drawUnits(ctx, cameraX, cameraY);
-		};
-
-		var createUnit = function(unit) {
-			unit.moveTo = moveTo;
-			unit.attack = attack;
-			units.push(unit);
-		};
-
-		var spawnSoldier = function(x, y, name) {
-			createUnit({ x: x, y: y, standingSprite: images.slice(1,5),
-				name: "Soldier" + (name ? " " + name : ""),
-				hp: 10,
-				maxHp: 10,
-				moveSpeed: 2,
-				die: function () { Dialog.show(this.name + ": Ergh") },
-				facing: Direction.Down,
-			});
-		};
-		spawnSoldier(1, 0, "A");
-		spawnSoldier(8, 5, "B");
-		spawnSoldier(4, 3, "C");
-
-		createUnit({ x: 3, y: 4, standingSprite: images.slice(5,9),
-			name: "Player",
-			hp: 7,
-			maxHp: 12,
-			moveSpeed: 3,
-			die: function () { Dialog.show("You died :(", function () { location.reload() }); },
-			facing: Direction.Up,
+	var spawnSoldier = function(x, y, name) {
+		Unit.createUnit({ x: x, y: y, standingSprite: images.slice(1,5),
+			name: "Soldier" + (name ? " " + name : ""),
+			strength: 40,
+			moveSpeed: 2,
+			die: function () { Dialog.show(this.name + ": Ergh") },
+			facing: Direction.Down,
 		});
+	};
+	spawnSoldier(1, 0, "A");
+	spawnSoldier(7, 5, "B");
+	spawnSoldier(4, 3, "C");
 
-
-		return {
-			unitAt: unitAt,
-			selected: null,
-			moveState: MoveState.Selecting,
-			attack: attack,
-			targets: targets,
-			draw: draw
-		};
-	}();
+	Unit.createUnit({ x: 2, y: 4, standingSprite: images.slice(5,9),
+		name: "Player",
+		strength: 45,
+		moveSpeed: 3,
+		die: function () { Dialog.show("You died :(", function () { location.reload() }); },
+		facing: Direction.Up,
+	});
 
 	Map = function() {
 		var mainTileSet = makeTileSet(images[0], 3, 3, TileSize, TileSize);
@@ -469,16 +557,21 @@ loadImages(["tiles/country.png",
 		};
 
 		var drawUnitInfo = function(ctx) {
-			var unit = Units.unitAt(selectorX, selectorY);
+			var unit = Unit.unitAt(selectorX, selectorY);
 			if (unit) {
 				var drawY = Map.positionBoxY(50);
 				ctx.fillStyle = Colors.BackgroundBlue;
 				ctx.strokeStyle = Colors.TextGrey;
-				ctx.fillRect(10, drawY, 50, 50);
-				ctx.rect(10, drawY, 50, 50);
+				ctx.fillRect(10, drawY, 90, 50);
+				ctx.rect(10, drawY, 90, 50);
+				ctx.stroke();
 				ctx.fillStyle = Colors.TextGrey;
-				ctx.fillText(unit.name, 10, 10 + drawY);
-				ctx.fillText(unit.hp + "/" + unit.maxHp, 10, 20 + drawY);
+				ctx.fillText(unit.name, 15, 10 + drawY);
+				var comStrMsg = "Strength: " + unit.currentStrength;
+				if (unit.currentStrength != unit.strength) {
+					comStrMsg += " (" + unit.strength + ")";
+				}
+				ctx.fillText(comStrMsg, 15, 20 + drawY);
 			}
 		};
 
@@ -527,7 +620,7 @@ loadImages(["tiles/country.png",
 				case Inputs.A:
 					switch (Units.moveState) {
 						case MoveState.Selecting:
-							Units.selected = Units.unitAt(selectorX, selectorY);
+							Units.selected = Unit.unitAt(selectorX, selectorY);
 							if (Units.selected) {
 								Units.oldX = Units.selected.x;
 								Units.oldY = Units.selected.y;
@@ -536,7 +629,7 @@ loadImages(["tiles/country.png",
 							break;
 						case MoveState.Moving:
 							if (Units.selected.moveTo(selectorX, selectorY)) {
-								var targets = Units.targets(Units.selected);
+								var targets = Unit.targets(Units.selected);
 								if (targets.length) {
 									Units.moveState = MoveState.Attacking;
 									Units.currentTargets = targets;
@@ -547,7 +640,7 @@ loadImages(["tiles/country.png",
 							}
 							break;
 						case MoveState.Attacking:
-							if (Units.selected.attack(Units.unitAt(selectorX, selectorY))) {
+							if (Units.selected.attack(Unit.unitAt(selectorX, selectorY))) {
 								Units.selected = null;
 								Units.moveState = MoveState.Selecting;
 							}
@@ -640,9 +733,9 @@ loadImages(["tiles/country.png",
 		Input.tick();
 	};
 
-	Dialog.show(["X selects units.", 
-			"Z goes back.", 
-			"Arrows move cursor."]);
+	Dialog.show(["Attack when you have", 
+			"advantage 15+ to kill.", 
+			"In water is -20 Str."]);
 	
 	mainloop();
 });
